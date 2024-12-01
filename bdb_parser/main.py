@@ -7,30 +7,35 @@ from io import BytesIO
 import tempfile
 from pprint import pprint
 
-def hex_to_ascii(hex_string):
+
+def hex_to_ascii(hex_string) -> str | None:
     """Convert a hexadecimal string to ASCII if possible."""
     try:
-        ascii_text = binascii.unhexlify(hex_string).decode('utf-8', errors='ignore')
-        if all(32 <= ord(c) <= 126 or c in '\n\t\r' for c in ascii_text):  # Printable characters
+        ascii_text = binascii.unhexlify(hex_string).decode("utf-8", errors="ignore")
+        if all(
+            32 <= ord(c) <= 126 or c in "\n\t\r" for c in ascii_text
+        ):  # Printable characters
             return ascii_text.strip()
     except (binascii.Error, UnicodeDecodeError):
         pass
     return None
 
 
-def parse_asn1_data(hex_string):
+def parse_asn1_data(hex_string) -> dict | None:
     """Parse ASN.1 DER data, such as cryptographic keys."""
     try:
         data = binascii.unhexlify(hex_string)
-        if data.startswith(b'\x30'):  # Likely an ASN.1 sequence
+        if data.startswith(b"\x30"):  # Likely an ASN.1 sequence
             # Try parsing as ECPrivateKey
             try:
                 private_key = ECPrivateKey.load(data)
                 print("private_key", private_key)
                 return {
                     "type": "ECPrivateKey",
-                    "private_key": private_key['private_key'].native.hex(),
-                    "public_key": private_key['public_key'].native.hex() if 'public_key' in private_key else None,
+                    "private_key": private_key["private_key"].native.hex(),
+                    "public_key": private_key["public_key"].native.hex()
+                    if "public_key" in private_key
+                    else None,
                 }
             except Exception:
                 pass
@@ -40,7 +45,7 @@ def parse_asn1_data(hex_string):
                 public_key = PublicKeyInfo.load(data)
                 return {
                     "type": "ECPublicKey",
-                    "public_key": public_key['public_key'].native.hex(),
+                    "public_key": public_key["public_key"].native.hex(),
                 }
             except Exception:
                 pass
@@ -50,16 +55,15 @@ def parse_asn1_data(hex_string):
         return None
 
 
-def analyze_dump(dump):
-    analyze = False
+def analyze_dump(dump) -> list:
     """Analyze the Berkeley DB wallet dump."""
     results = []
     lines = dump.splitlines()
 
     for i in range(len(lines)):
         line = lines[i].strip()
-    
-        key_value_match = re.match(r'([0-9a-fA-F]+)(.*)$', line)
+
+        key_value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line)
         # print(key_value_match)
         if key_value_match:
             # print(key_value_match.group(1), key_value_match.group(2))
@@ -73,18 +77,21 @@ def analyze_dump(dump):
             key_asn1 = parse_asn1_data(key)
             value_asn1 = parse_asn1_data(value)
 
-            results.append({
-                "key": key,
-                "key_ascii": key_ascii,
-                "key_asn1": key_asn1,
-                "value": value,
-                "value_ascii": value_ascii,
-                "value_asn1": value_asn1,
-            })
+            results.append(
+                {
+                    "key": key,
+                    "key_ascii": key_ascii,
+                    "key_asn1": key_asn1,
+                    "value": value,
+                    "value_ascii": value_ascii,
+                    "value_asn1": value_asn1,
+                }
+            )
 
     return results
 
-def get_chunks(input_text):
+
+def get_chunks(input_text) -> dict:
     """
     Processes the input text in multiple steps to parse key-value pairs.
 
@@ -112,6 +119,7 @@ def get_chunks(input_text):
     result["data"] = "\n".join(data)
 
     return result
+
 
 def main():
     # Replace this with the wallet dump
@@ -158,12 +166,12 @@ def main():
     b28d5b0001000300000000640000000000000000
     DATA=END
     """
-    
+
     results = get_chunks(wallet_dump)
     # pprint(results)
     # print(results['data'])
 
-    a = analyze_dump(results['data'])
+    a = analyze_dump(results["data"])
 
     print(a)
 
