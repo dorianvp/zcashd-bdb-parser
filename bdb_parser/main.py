@@ -1,11 +1,10 @@
 import binascii
 import re
 from asn1crypto.keys import ECPrivateKey, PublicKeyInfo
-from asn1crypto.core import OctetString, Integer
-import bsddb3 as bdb
-from io import BytesIO
-import tempfile
 from pprint import pprint
+import argparse
+
+# import bsddb3 as bdb
 
 
 def hex_to_ascii(hex_string) -> str | None:
@@ -119,6 +118,20 @@ def get_chunks(input_text) -> dict:
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--file",
+        # type=argparse.FileType("r"),
+        required=False,
+        help="The input file to parse (e.g., wallet.dat)",
+        default=None,
+    )
+    args = parser.parse_args()
+
+    if hasattr(args, "input") and args.input:
+        with open(args.input, "r") as f:
+            wallet_dump = f.read()
+
     # Replace this with the wallet dump
     wallet_dump = """
     VERSION=3
@@ -165,8 +178,6 @@ def main():
     """
 
     results = get_chunks(wallet_dump)
-    # pprint(results)
-    # print(results['data'])
 
     analysis_result = analyze_dump(results["data"])
 
