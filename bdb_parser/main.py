@@ -60,16 +60,13 @@ def analyze_dump(dump) -> list:
     results = []
     lines = dump.splitlines()
 
-    for i in range(len(lines)):
+    for i in range(0, len(lines) - 1, 2):
         line = lines[i].strip()
 
         key_value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line)
-        # print(key_value_match)
         if key_value_match:
-            # print(key_value_match.group(1), key_value_match.group(2))
             key = key_value_match.group(1)
-            value = key_value_match.group(2)
-            # print('key', key, 'value', value)
+            value = re.match(r"([0-9a-fA-F]+)(.*)$", lines[i + 1].strip()).group(1)
 
             key_ascii = hex_to_ascii(key)
             value_ascii = hex_to_ascii(value)
@@ -79,7 +76,7 @@ def analyze_dump(dump) -> list:
 
             results.append(
                 {
-                    "key": key,
+                    # "key": key,
                     "key_ascii": key_ascii,
                     "key_asn1": key_asn1,
                     "value": value,
@@ -171,23 +168,11 @@ def main():
     # pprint(results)
     # print(results['data'])
 
-    a = analyze_dump(results["data"])
+    analysis_result = analyze_dump(results["data"])
 
-    print(a)
-
-    # for entry in a:
-    #     # print(f"{entry}")
-    #     if entry['key_ascii']:
-    #         print(f"  ASCII Key: {entry['key_ascii']}")
-    #     if entry['key_asn1']:
-    #         print(f"  ASN.1 Key Data: {entry['key_asn1']}")
-
-    #     # print(f"Value: {entry['value']}")
-    #     if entry['value_ascii']:
-    #         print(f"  ASCII Value: {entry['value_ascii']}")
-    #     if entry['value_asn1']:
-    #         print(f"  ASN.1 Value Data: {entry['value_asn1']}")
-    #     print()
+    for entry in analysis_result:
+        if entry["key_ascii"] is not None:
+            pprint(entry)
 
 
 if __name__ == "__main__":
