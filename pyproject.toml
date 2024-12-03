@@ -10,6 +10,7 @@ python = "^3.12"
 berkeleydb = "^18.1.11"
 asn1crypto = "^1.5.1"
 bsddb3 = "^6.2.9"
+secp256k1 = "^0.14.0"
 
 
 [build-system]

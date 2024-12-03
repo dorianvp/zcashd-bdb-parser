@@ -1,10 +1,11 @@
 import binascii
 import re
-from asn1crypto.keys import ECPrivateKey, PublicKeyInfo
-from pprint import pprint
+from asn1crypto.keys import PublicKeyInfo
 import argparse
+from secp256k1 import PrivateKey
 
-# import bsddb3 as bdb
+PUBLIC_KEY_LEN = 33  # Compressed secp256k1 public key length
+PRIVATE_KEY_LEN = 32  # secp256k1 private key length
 
 
 def hex_to_ascii(hex_string) -> str | None:
@@ -23,17 +24,21 @@ def hex_to_ascii(hex_string) -> str | None:
 def parse_asn1_data(hex_string) -> dict | None:
     """Parse ASN.1 DER data, such as cryptographic keys."""
     try:
-        data = binascii.unhexlify(hex_string)
-        print("data", hex_string)
+        data = bytearray.fromhex(hex_string)
+
+        # Parse PrivateKey
+        # Split data
+        vch_privkey = bytes(data)[:PRIVATE_KEY_LEN]
+        _hashed_data = data[PRIVATE_KEY_LEN:]
+
         # Try parsing as ECPrivateKey
         try:
-            private_key = ECPrivateKey.load(data)
+            private_key = PrivateKey(vch_privkey, raw=True)
+
             return {
                 "type": "ECPrivateKey",
-                "private_key": private_key["private_key"].native.hex(),
-                "public_key": private_key["public_key"].native.hex()
-                if "public_key" in private_key
-                else None,
+                "private_key": private_key.serialize(),
+                "public_key": None,
             }
         except Exception:
             pass
@@ -60,30 +65,33 @@ def analyze_dump(dump) -> list:
 
     for i in range(0, len(lines) - 1, 2):
         line = lines[i].strip()
-
+        value_line = lines[i + 1].strip()
         # First byte is always the length of the key
         length = int(line[0:2], 16)
         key_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[2 : length * 2 + 2])
         value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :])
 
-        if key_match is not None and value_match is not None:
+        key = None
+        value = None
+        if key_match is not None:
             key = key_match.group(1)
+        if value_match is not None:
             value = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :]).group(1)
 
-            key_ascii = hex_to_ascii(key)
-            # value_ascii = hex_to_ascii(value)
+        key_ascii = hex_to_ascii(key)
 
-            # key_asn1 = parse_asn1_data(value)
-            # value_asn1 = parse_asn1_data(value)
+        parsed_value = None
+        if key_ascii == "key":
+            parsed_value = parse_asn1_data(value_line)
 
-            results.append(
-                {
-                    # "key": key,
-                    "key_ascii": key_ascii,
-                    "value": value,
-                    "parsed_value": None,
-                }
-            )
+        results.append(
+            {
+                # "key": key,
+                "key_ascii": key_ascii,
+                "value": value,
+                "parsed_value": parsed_value,
+            }
+        )
 
     return results
 
@@ -187,7 +195,8 @@ def main():
         if entry["key_ascii"] is not None:
             print("Key:", entry["key_ascii"])
             print("Value: ", entry["value"])
-            print()
+            if entry["parsed_value"] is not None:
+                print("Parsed Value: ", entry["parsed_value"])
 
 
 if __name__ == "__main__":
