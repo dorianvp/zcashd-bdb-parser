@@ -62,10 +62,14 @@ def analyze_dump(dump) -> list:
     for i in range(0, len(lines) - 1, 2):
         line = lines[i].strip()
 
-        key_value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line)
-        if key_value_match:
-            key = key_value_match.group(1)
-            value = re.match(r"([0-9a-fA-F]+)(.*)$", lines[i + 1].strip()).group(1)
+        # First byte is always the length of the key
+        length = int(line[0:2], 16)
+        key_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[2 : length * 2 + 2])
+        value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :])
+
+        if key_match is not None and value_match is not None:
+            key = key_match.group(1)
+            value = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :]).group(1)
 
             key_ascii = hex_to_ascii(key)
             value_ascii = hex_to_ascii(value)
