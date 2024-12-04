@@ -2,10 +2,77 @@ import binascii
 import re
 from asn1crypto.keys import PublicKeyInfo
 import argparse
-from secp256k1 import PrivateKey
+from secp256k1 import PrivateKey, PublicKey
 
 PUBLIC_KEY_LEN = 33  # Compressed secp256k1 public key length
 PRIVATE_KEY_LEN = 32  # secp256k1 private key length
+
+
+def parse_key_value(lines: [str]) -> tuple[int, None]:
+    """Serialized data is in the following format:
+    <private_key>SHA256(<public_key><private_key>)
+    """
+    try:
+        value_line = lines[0].strip()
+
+        private_key_raw = bytes(bytearray.fromhex(value_line[0 : PRIVATE_KEY_LEN * 2]))
+        private_key = PrivateKey(private_key_raw, raw=True)
+
+        return {"lines": 1, "value": private_key.serialize()}
+    except Exception as e:
+        print("ERROR PARSING PRIV KEY", e)
+
+    return {"lines": 1, "value": None}
+
+
+def parse_key_key(lines: [str]) -> [int, None]:
+    try:
+        key_line = lines[0].strip()
+        name_len = int(key_line[0:2], 16)
+
+        # pubkey_len = int(key_line[name_len * 2 + 2 : name_len * 2 + 4], 16)
+
+        public_key_raw = bytes(bytearray.fromhex(key_line[name_len * 2 + 4 :]))
+
+        public_key = PublicKey(public_key_raw, raw=True)
+        return {"lines": 1, "value": public_key.serialize(compressed=True).hex()}
+    except Exception as e:
+        print("ERROR PARSING KEY", e)
+        return {"lines": 1, "value": None}
+
+
+def parse_pool_key(lines: [str]) -> [int, None]:
+    return {"lines": 1, "value": None}
+
+
+def parse_pool_value(lines: [str]) -> [int, None]:
+    return {"lines": 1, "value": None}
+
+
+keys = {
+    "key": {
+        "name": "key",
+        "key_parser": parse_key_key,
+        "value_parser": parse_key_value,
+    },
+    "name": {},
+    "pool": {
+        "name": "pool",
+        "key_parser": parse_pool_key,
+        "value_parser": parse_pool_value,
+    },
+    "version": {},
+    "minversion": {},
+    "keymeta": {},
+    "purpose": {},
+    "bestblock": {},
+    "defaultkey": {},
+    "networkinfo": {},
+    "mnemonichdchain": {},
+    "witnesscachesize": {},
+    "bestblock_nomerkle": {},
+    "orchard_note_commitment_tree": {},
+}
 
 
 def hex_to_ascii(hex_string) -> str | None:
@@ -58,37 +125,56 @@ def parse_asn1_data(hex_string) -> dict | None:
         return None
 
 
+def parse_key_name(line) -> str:
+    key_name_length = int(line[0:2], 16)
+    key_name_hex = line[2 : key_name_length * 2 + 2]
+
+    try:
+        key_name = hex_to_ascii(key_name_hex)
+    except Exception:
+        key_name = None
+
+    return key_name
+
+
 def analyze_dump(dump) -> list:
     """Analyze the Berkeley DB wallet dump."""
     results = []
     lines = dump.splitlines()
 
-    for i in range(0, len(lines) - 1, 2):
+    i = 0
+
+    while i < len(lines):
         line = lines[i].strip()
-        value_line = lines[i + 1].strip()
-        # First byte is always the length of the key
-        length = int(line[0:2], 16)
-        key_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[2 : length * 2 + 2])
-        value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :])
+        remaining_lines = lines[i:]
+        # value_line = lines[i + 1].strip()
+        # length = int(line[0:2], 16)
+        # value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :])
+        key_ascii = parse_key_name(line)
+        print(key_ascii)
 
-        key = None
-        value = None
-        if key_match is not None:
-            key = key_match.group(1)
-        if value_match is not None:
-            value = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :]).group(1)
-
-        key_ascii = hex_to_ascii(key)
-
+        key = {
+            "lines": 1,
+            "value": None,
+        }
         parsed_value = None
-        if key_ascii == "key":
-            parsed_value = parse_asn1_data(value_line)
-
+        if key_ascii is not None:
+            try:
+                key = keys[key_ascii]["key_parser"](remaining_lines)
+                parsed_value = keys[key_ascii]["value_parser"](remaining_lines[1:])[
+                    "value"
+                ]
+                if key is not None:
+                    i += key["lines"] + parsed_value["lines"]
+            except Exception:
+                i += 1
+        else:
+            i += 1
         results.append(
             {
-                # "key": key,
+                "key": key["value"],
                 "key_ascii": key_ascii,
-                "value": value,
+                "value": None,
                 "parsed_value": parsed_value,
             }
         )
@@ -130,7 +216,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--file",
-        # type=argparse.FileType("r"),
         required=False,
         help="The input file to parse (e.g., wallet.dat)",
         default=None,
@@ -193,8 +278,8 @@ def main():
 
     for entry in analysis_result:
         if entry["key_ascii"] is not None:
-            print("Key:", entry["key_ascii"])
-            print("Value: ", entry["value"])
+            print("Key:", entry["key_ascii"], entry["key"])
+            # print("Value: ", entry["value"])
             if entry["parsed_value"] is not None:
                 print("Parsed Value: ", entry["parsed_value"])
 
