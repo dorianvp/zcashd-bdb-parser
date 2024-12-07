@@ -8,6 +8,20 @@ PUBLIC_KEY_LEN = 33  # Compressed secp256k1 public key length
 PRIVATE_KEY_LEN = 32  # secp256k1 private key length
 
 
+def parse_key_key(lines: [str]) -> [int, None]:
+    try:
+        key_line = lines[0].strip()
+        name_len = int(key_line[0:2], 16)
+
+        public_key_raw = bytes(bytearray.fromhex(key_line[name_len * 2 + 4 :]))
+
+        public_key = PublicKey(public_key_raw, raw=True)
+        return {"lines": 1, "value": public_key.serialize(compressed=True).hex()}
+    except Exception as e:
+        print("ERROR PARSING KEY", e)
+        return {"lines": 1, "value": None}
+
+
 def parse_key_value(lines: [str]) -> tuple[int, None]:
     """Serialized data is in the following format:
     <private_key>SHA256(<public_key><private_key>)
@@ -25,28 +39,83 @@ def parse_key_value(lines: [str]) -> tuple[int, None]:
     return {"lines": 1, "value": None}
 
 
-def parse_key_key(lines: [str]) -> [int, None]:
+def parse_minversion_key(lines: [str]) -> [int, None]:
+    return {"lines": 1, "value": ""}
+
+
+def parse_minversion_value(lines: [str]) -> [int, None]:
     try:
-        key_line = lines[0].strip()
-        name_len = int(key_line[0:2], 16)
-
-        # pubkey_len = int(key_line[name_len * 2 + 2 : name_len * 2 + 4], 16)
-
-        public_key_raw = bytes(bytearray.fromhex(key_line[name_len * 2 + 4 :]))
-
-        public_key = PublicKey(public_key_raw, raw=True)
-        return {"lines": 1, "value": public_key.serialize(compressed=True).hex()}
+        value_line = lines[0].strip()
+        version = int(value_line, 16)
+        return {"lines": 1, "value": version}
     except Exception as e:
-        print("ERROR PARSING KEY", e)
+        print("ERROR PARSING MINVERSION", e)
         return {"lines": 1, "value": None}
 
 
 def parse_pool_key(lines: [str]) -> [int, None]:
-    return {"lines": 1, "value": None}
+    try:
+        key_line = lines[0].strip()
+        name_len = int(key_line[0:2], 16)
+
+        n_index_raw = bytes(bytearray.fromhex(key_line[name_len * 2 + 2 :]))
+
+        # in little endian
+        n_index = int.from_bytes(n_index_raw, "little")
+
+        return {"lines": 1, "value": n_index}
+    except Exception as e:
+        print("ERROR PARSING POOL KEY", e)
+        return {"lines": 1, "value": None}
 
 
 def parse_pool_value(lines: [str]) -> [int, None]:
-    return {"lines": 1, "value": None}
+    """
+    Values are in the following format:
+    <timestamp><key_length><compressed_pubkey>
+    <keyname_length>"keymeta"<key_length><compressed_pubkey>
+
+    This function expects each value to take up 2 lines minimum, and 2 for each key.
+    """
+
+    try:
+        i = 0
+        keys = []
+        while i + 1 < len(lines):
+            timestamp_line = lines[i].strip()
+            keymeta_line = lines[i + 1].strip()
+
+            keymeta_name_len = int(keymeta_line[0:2], 16)
+            keymeta_name = hex_to_ascii(keymeta_line[2 : keymeta_name_len * 2 + 2])
+            if keymeta_name == "keymeta":
+                public_key = keymeta_line[keymeta_name_len * 2 + 2 :]
+
+                # TODO: nTime (timestamp) is an int64_t. Should be interpreted correctly...
+                timestamp_hex = timestamp_line[0 : 8 * 2]
+
+                timestamp_hex = timestamp_line[0 : 8 * 2]
+                timestamp_raw = bytes(bytearray.fromhex(timestamp_hex))
+                timestamp = int.from_bytes(timestamp_raw, "big")
+
+                keys.append(
+                    {
+                        "name": keymeta_name,
+                        "timestamp": timestamp,
+                        "public_key": public_key,
+                    }
+                )
+
+            else:
+                break
+
+            i += 2
+
+        return {"lines": 2, "value": keys}
+
+    except Exception as e:
+        print("ERROR PARSING POOL VALUE", e)
+
+    return {"lines": 1, "value": []}
 
 
 keys = {
@@ -62,7 +131,11 @@ keys = {
         "value_parser": parse_pool_value,
     },
     "version": {},
-    "minversion": {},
+    "minversion": {
+        "name": "minversion",
+        "key_parser": parse_minversion_key,
+        "value_parser": parse_minversion_value,
+    },
     "keymeta": {},
     "purpose": {},
     "bestblock": {},
@@ -147,11 +220,7 @@ def analyze_dump(dump) -> list:
     while i < len(lines):
         line = lines[i].strip()
         remaining_lines = lines[i:]
-        # value_line = lines[i + 1].strip()
-        # length = int(line[0:2], 16)
-        # value_match = re.match(r"([0-9a-fA-F]+)(.*)$", line[length * 2 + 2 :])
         key_ascii = parse_key_name(line)
-        print(key_ascii)
 
         key = {
             "lines": 1,
@@ -282,6 +351,7 @@ def main():
             # print("Value: ", entry["value"])
             if entry["parsed_value"] is not None:
                 print("Parsed Value: ", entry["parsed_value"])
+            print()
 
 
 if __name__ == "__main__":
